@@ -57,15 +57,21 @@ function profileCard(){const p=riders[uid]||{name:profile.rname};return `<h2>My 
   <label>Name</label><input id="pn" value="${esc(p.name)}"><label>About me (shown to carers when booking)</label><textarea id="pb" rows="3" maxlength="300" placeholder="e.g. Retired teacher, love a chat about local history. Riding since 2023.">${esc(p.bio)}</textarea>
   <label>Phone (only shown to carers who book you)</label><input id="pp" type="tel" value="${esc(p.phone)}"><p><button id="sp">Save profile</button></p></div>`}
 function shrink(f){return new Promise(r=>{const i=new Image();i.onload=()=>{const c=document.createElement("canvas");c.width=c.height=160;const s=Math.min(i.width,i.height);c.getContext("2d").drawImage(i,(i.width-s)/2,(i.height-s)/2,s,s,0,0,160,160);r(c.toDataURL("image/jpeg",.7))};i.src=URL.createObjectURL(f)})}
-function hourState(d,h,occ){if(isPast(d,h))return{t:"past"};const o=occ[key(d,h)];if(o)return{t:o.type==="ride"?"booked":"chg"};if(slots.some(s=>s.riderId===uid&&s.date===d&&s.hour===h))return{t:"mine"};return{t:"free",others:slots.filter(s=>s.date===d&&s.hour===h&&s.riderId!==uid&&s.status==="open").map(s=>rn(s).split(" ")[0])}}
+function hourState(d,h,occ){if(isPast(d,h))return{t:"past"};
+  const o=occ[key(d,h)];if(o)return{t:o.type==="ride"?"booked":"chg"};
+  for(let i=1;i<=gap;i++)if(occ[key(d,h+i)])return{t:"chg"};
+  const near=slots.filter(s=>s.date===d&&Math.abs(s.hour-h)<=gap),same=near.find(s=>s.hour===h);
+  if(same)return{t:same.riderId===uid?"mine":"taken"};
+  if(near.length)return{t:"near"};
+  return{t:"free"}}
 function availCard(occ){
   const st=H.map(h=>({h,...hourState(rdate,h,occ)})),free=st.filter(x=>x.t==="free");
   rsel=new Set([...rsel].filter(h=>free.some(x=>x.h===h)));
-  const lab={booked:"Bike booked",chg:"Bike charging",mine:"You offered",past:"Past"};
+  const lab={booked:"Bike booked",chg:"Bike charging",mine:"You offered",taken:"Already offered",near:"Charging gap",past:"Past"};
   const sum=free.length?`Bike is free for you at: <b>${free.map(x=>h12(x.h)).join(", ")}</b>`:`No free hours this day – the bike is booked, charging, or already offered by you.`;
   return `<h2>Set my availability</h2><div class="card"><label>Date</label><input type="date" id="d" min="${today()}" value="${rdate}">
-  <p>${sum}</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${st.map(x=>x.t==="free"?`<button data-pick="${x.h}" class="${rsel.has(x.h)?"":"sec"}">${fmtT(x.h)}${x.others.length?`<br><small>also ${esc(x.others.join(", "))}</small>`:""}</button>`:`<button class="sec" disabled style="opacity:.45">${fmtT(x.h)}<br><small>${lab[x.t]}</small></button>`).join("")}</div>
-  <p class="mut">Tap the hours you can ride. Once an hour is booked, the next ${gap} hour${gap===1?"":"s"} are blocked for charging, so back-to-back slots may not all stay bookable.</p><p><button id="add">Add ${rsel.size||""} selected</button></p></div>`}
+  <p>${sum}</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${st.map(x=>x.t==="free"?`<button data-pick="${x.h}" class="${rsel.has(x.h)?"":"sec"}">${fmtT(x.h)}</button>`:`<button class="sec" disabled style="opacity:.45">${fmtT(x.h)}<br><small>${lab[x.t]}</small></button>`).join("")}</div>
+  <p class="mut">Tap the hours you can ride. There is one bike, so each ride needs ${gap} hour${gap===1?"":"s"} of charging after it. Hours too close to another slot are greyed out.</p><p><button id="add">Add ${rsel.size||""} selected</button></p></div>`}
 const byTime=a=>[...a].sort((x,y)=>(x.date+String(x.hour).padStart(2,"0")).localeCompare(y.date+String(y.hour).padStart(2,"0")));
 
 function occupancy(){const m={};
@@ -87,6 +93,7 @@ function bookPage(){
       const offered=slots.filter(s=>s.status==="open"&&s.date===d&&s.hour===h);
       if(o&&o.type==="ride")c=`<div class="bk">${o.s.carerId===uid?"Your ride":"Booked"}</div>`;
       else if(o)c=`<div class="chg">Bike charging</div>`;
+      else if(offered.length&&!past&&Array.from({length:gap},(_,i)=>occ[key(d,h+i+1)]).some(Boolean))c=`<div class="chg">Not available</div>`;
       else if(offered.length&&!past)c=`<button data-d="${d}" data-h="${h}">${esc(offered.map(s=>rn(s).split(" ")[0]).join(", "))}</button>`;
       g+=`<div class="${past?"past":""} ${sel&&sel.d===d&&sel.h===h?"sel":""}">${c}</div>`}}
   g+=`</div>`;
@@ -162,7 +169,7 @@ function bindRider(){
   $("#ph").onchange=async e=>{const f=e.target.files[0];if(!f||!db)return;const photo=await shrink(f);
     riders[uid]={name:profile.rname,bio:"",phone:"",...(riders[uid]||{}),photo};await db.collection("riders").doc(uid).set(riders[uid]);render()};
   $("#d").onchange=e=>{rdate=e.target.value||today();rsel.clear();render()};
-  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const h=+b.dataset.pick;rsel.has(h)?rsel.delete(h):rsel.add(h);render()});
+  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const h=+b.dataset.pick;if(rsel.has(h))rsel.delete(h);else{[...rsel].forEach(x=>{if(Math.abs(x-h)<=gap)rsel.delete(x)});rsel.add(h)}render()});
   $("#add").onclick=async()=>{if(!db||!rsel.size)return alert("Tap at least one hour first.");const occ=occupancy();
     for(const h of [...rsel]){if(hourState(rdate,h,occ).t!=="free")continue;
       await db.collection("slots").add({riderId:uid,riderName:profile.rname,date:rdate,hour:h,status:"open"})}
@@ -172,7 +179,7 @@ function bindRider(){
 window.addEventListener("hashchange",()=>{sel=null;render()});
 render();
 /* ---------- Local demo data layer (replaces the claude.ai database) ---------- */
-const LS="wr_db_v1";
+const LS="wr_db_v2";
 let store={};try{store=JSON.parse(localStorage.getItem(LS)||"{}")}catch(e){}
 const persist=()=>{try{localStorage.setItem(LS,JSON.stringify(store))}catch(e){}};
 const subs=[];const notify=()=>subs.forEach(f=>f());
@@ -197,10 +204,10 @@ function seed(){
     r_sam:{name:"Sam Taylor",bio:"Retired teacher. Loves a chat about local history. Riding since 2023.",phone:"0400 000 001",photo:""},
     r_jan:{name:"Jan Morris",bio:"Local gardener and keen birdwatcher.",phone:"0400 000 002",photo:""},
     r_bob:{name:"Bob Nguyen",bio:"Ex-bike mechanic, happy to just ride quietly.",phone:"0400 000 003",photo:""}},slots:{}};
-  const plan={r_sam:[9,10],r_jan:[11,12,13],r_bob:[14,15,10]};
+  const ids=["r_sam","r_jan","r_bob"];
   for(let i=0;i<10;i++){const d=addD(today(),i);
-    for(const [r,hrs] of Object.entries(plan)){if((i+r.length)%3===0)continue;
-      for(const h of hrs)store.slots["s_"+r+d+h]={riderId:r,riderName:store.riders[r].name,date:d,hour:h,status:"open"}}}
+    [9,11,13,15].forEach((h,k)=>{if((i+k)%5===4)return;const r=ids[(i+k)%3];
+      store.slots["s_"+r+d+h]={riderId:r,riderName:store.riders[r].name,date:d,hour:h,status:"open"}})}
   persist();
 }
 if(!store.seeded)seed();
