@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="theme-color" content="#2f7d57"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Woodend Rides"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Woodend Rides</title>
+<style>
+:root{--bg:#f6f4ee;--card:#fff;--tx:#1f2a24;--mut:#6b756e;--ac:#2f7d57;--ac2:#e3f1e9;--bd:#dcd8cc;--warn:#b4561b;--wb:#f6e3d2;--ch:#fff3c4;--cht:#7a5b00;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171c19;--card:#222a25;--tx:#eef2ee;--mut:#9aa69e;--ac:#5cc08c;--ac2:#25382d;--bd:#36423a;--warn:#f0a367;--wb:#43301f;--ch:#40370f;--cht:#e8cc63}}
+:root[data-theme="dark"]{--bg:#171c19;--card:#222a25;--tx:#eef2ee;--mut:#9aa69e;--ac:#5cc08c;--ac2:#25382d;--bd:#36423a;--warn:#f0a367;--wb:#43301f;--ch:#40370f;--cht:#e8cc63}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}h2{font-size:17px;margin:20px 0 8px}
+.sub,.mut{color:var(--mut)}.sub{margin:0 0 12px}.mut{font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 14px;margin:8px 0}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+label{display:block;font-size:14px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button{padding:10px 16px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:var(--ac2);color:var(--ac)}button.x{background:none;color:var(--warn);padding:6px 8px}
+.tag{font-size:13px;padding:2px 8px;border-radius:99px;background:var(--ac2);color:var(--ac)}.tag.b{background:var(--wb);color:var(--warn)}
+.alert{background:var(--ac2);border:1px solid var(--ac);border-radius:12px;padding:12px 14px;margin:8px 0}
+.cal{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
+.grid{display:grid;grid-template-columns:48px repeat(7,minmax(84px,1fr));min-width:680px}
+.grid>div{border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);min-height:44px;padding:3px;font-size:12px}
+.hd{font-weight:700;text-align:center;background:var(--bg);font-size:13px!important}.hr{color:var(--mut);text-align:right}
+.grid button{width:100%;height:100%;min-height:36px;padding:2px 4px;font-size:12px;line-height:1.2}
+.bk{background:var(--wb);color:var(--warn);border-radius:6px;padding:4px;text-align:center}
+.chg{background:var(--ch);color:var(--cht);border-radius:6px;padding:4px;text-align:center}
+.sel button{outline:3px solid var(--tx)}.past{opacity:.4}
+.legend span{display:inline-block;margin-right:10px;font-size:13px}
+a{color:var(--ac)}
+</style></head><body><main id="app"><p class="sub">Loading…</p></main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let db=null,uid=null,slots=[],gap=1,sel=null,profile={};
+try{profile=JSON.parse(localStorage.getItem("wr_p2")||"{}")}catch(e){}
+const saveP=()=>{try{localStorage.setItem("wr_p2",JSON.stringify(profile))}catch(e){}};
+const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const pd=s=>new Date(s+"T00:00");
+const addD=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return ymd(d)};
+const monday=s=>{const d=pd(s);d.setDate(d.getDate()-((d.getDay()+6)%7));return ymd(d)};
+const today=()=>ymd(new Date());
+let week=monday(today());
+const H=[...Array(12)].map((_,i)=>i+7);
+const h12=h=>((h%12)||12)+(h<12||h===24?"am":"pm");
+const fmtT=h=>h12(h)+" – "+h12(h+1);
+const fmtD=s=>pd(s).toLocaleDateString("en-AU",{weekday:"long",day:"numeric",month:"long"});
+const isPast=(d,h)=>{const n=new Date();return d<ymd(n)||(d===ymd(n)&&h<=n.getHours())};
+const key=(d,h)=>d+"_"+h;
+const isRider=()=>location.hash==="#riders";
+let rdate=today(),rsel=new Set(),riders={};
+const rn=s=>(riders[s.riderId]&&riders[s.riderId].name)||s.riderName;
+function avatar(p,z){const n=((p&&p.name)||"?").trim();return p&&p.photo?`<img src="${p.photo}" alt="" style="width:${z}px;height:${z}px;border-radius:50%;object-fit:cover;flex:none">`:`<div style="width:${z}px;height:${z}px;border-radius:50%;background:var(--ac2);color:var(--ac);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${Math.round(z/2.2)}px;flex:none">${esc((n[0]||"?").toUpperCase())}</div>`}
+function riderCard(id){const p=riders[id];if(!p)return "";return `<div class="row" style="justify-content:flex-start;gap:12px;margin:10px 0">${avatar(p,56)}<div><b>${esc(p.name)}</b>${p.bio?`<br><span class="mut">${esc(p.bio)}</span>`:""}</div></div>`}
+function profileCard(){const p=riders[uid]||{name:profile.rname};return `<h2>My profile</h2><div class="card"><div class="row" style="justify-content:flex-start;gap:12px">${avatar(p,64)}<div style="flex:1"><label style="margin:0">Photo (optional)</label><input type="file" id="ph" accept="image/*"></div></div>
+  <label>Name</label><input id="pn" value="${esc(p.name)}"><label>About me (shown to carers when booking)</label><textarea id="pb" rows="3" maxlength="300" placeholder="e.g. Retired teacher, love a chat about local history. Riding since 2023.">${esc(p.bio)}</textarea>
+  <label>Phone (only shown to carers who book you)</label><input id="pp" type="tel" value="${esc(p.phone)}"><p><button id="sp">Save profile</button></p></div>`}
+function shrink(f){return new Promise(r=>{const i=new Image();i.onload=()=>{const c=document.createElement("canvas");c.width=c.height=160;const s=Math.min(i.width,i.height);c.getContext("2d").drawImage(i,(i.width-s)/2,(i.height-s)/2,s,s,0,0,160,160);r(c.toDataURL("image/jpeg",.7))};i.src=URL.createObjectURL(f)})}
+function hourState(d,h,occ){if(isPast(d,h))return{t:"past"};const o=occ[key(d,h)];if(o)return{t:o.type==="ride"?"booked":"chg"};if(slots.some(s=>s.riderId===uid&&s.date===d&&s.hour===h))return{t:"mine"};return{t:"free",others:slots.filter(s=>s.date===d&&s.hour===h&&s.riderId!==uid&&s.status==="open").map(s=>rn(s).split(" ")[0])}}
+function availCard(occ){
+  const st=H.map(h=>({h,...hourState(rdate,h,occ)})),free=st.filter(x=>x.t==="free");
+  rsel=new Set([...rsel].filter(h=>free.some(x=>x.h===h)));
+  const lab={booked:"Bike booked",chg:"Bike charging",mine:"You offered",past:"Past"};
+  const sum=free.length?`Bike is free for you at: <b>${free.map(x=>h12(x.h)).join(", ")}</b>`:`No free hours this day – the bike is booked, charging, or already offered by you.`;
+  return `<h2>Set my availability</h2><div class="card"><label>Date</label><input type="date" id="d" min="${today()}" value="${rdate}">
+  <p>${sum}</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${st.map(x=>x.t==="free"?`<button data-pick="${x.h}" class="${rsel.has(x.h)?"":"sec"}">${fmtT(x.h)}${x.others.length?`<br><small>also ${esc(x.others.join(", "))}</small>`:""}</button>`:`<button class="sec" disabled style="opacity:.45">${fmtT(x.h)}<br><small>${lab[x.t]}</small></button>`).join("")}</div>
+  <p class="mut">Tap the hours you can ride. Once an hour is booked, the next ${gap} hour${gap===1?"":"s"} are blocked for charging, so back-to-back slots may not all stay bookable.</p><p><button id="add">Add ${rsel.size||""} selected</button></p></div>`}
+const byTime=a=>[...a].sort((x,y)=>(x.date+String(x.hour).padStart(2,"0")).localeCompare(y.date+String(y.hour).padStart(2,"0")));
+
+function occupancy(){const m={};
+  slots.filter(s=>s.status==="booked").forEach(s=>(s.lockKeys||[key(s.date,s.hour)]).forEach((k,i)=>{m[k]={type:i?"chg":"ride",s}}));return m}
+
+function render(){
+  const a=$("#app"),off=db?"":`<div class="alert">Data storage is unavailable in this browser.</div>`;
+  a.innerHTML=(isRider()?riderPage():bookPage())+off+(isRider()?`<p><button class="x" id="rs">Reset demo data</button></p>`:`<p class="mut" style="text-align:center">Demo version – data is stored on this device only.</p>`);
+  (isRider()?bindRider:bindBook)();if($("#rs"))$("#rs").onclick=resetDemo;
+}
+
+/* ---------- BOOKING FRONT END ---------- */
+function bookPage(){
+  const occ=occupancy(),days=[...Array(7)].map((_,i)=>addD(week,i));
+  const mine=byTime(slots.filter(s=>s.status==="booked"&&s.carerId===uid&&s.date>=today()));
+  let g=`<div class="grid"><div class="hd"></div>`+days.map(d=>`<div class="hd">${pd(d).toLocaleDateString("en-AU",{weekday:"short"})}<br>${pd(d).getDate()}/${pd(d).getMonth()+1}</div>`).join("");
+  for(const h of H){g+=`<div class="hr">${h12(h)}</div>`;
+    for(const d of days){const k=key(d,h),o=occ[k],past=isPast(d,h);let c="";
+      const offered=slots.filter(s=>s.status==="open"&&s.date===d&&s.hour===h);
+      if(o&&o.type==="ride")c=`<div class="bk">${o.s.carerId===uid?"Your ride":"Booked"}</div>`;
+      else if(o)c=`<div class="chg">Bike charging</div>`;
+      else if(offered.length&&!past)c=`<button data-d="${d}" data-h="${h}">${esc(offered.map(s=>rn(s).split(" ")[0]).join(", "))}</button>`;
+      g+=`<div class="${past?"past":""} ${sel&&sel.d===d&&sel.h===h?"sel":""}">${c}</div>`}}
+  g+=`</div>`;
+  let panel="";
+  if(sel){const opts=slots.filter(s=>s.status==="open"&&s.date===sel.d&&s.hour===sel.h);
+    panel=`<div class="card"><b>${fmtD(sel.d)}, ${fmtT(sel.h)}</b>
+    <label>Rider</label><select id="rid">${opts.map(s=>`<option value="${s.id}">${esc(rn(s))}</option>`).join("")}</select>
+    <div id="rp">${riderCard(opts[0]&&opts[0].riderId)}</div>
+    <label>Your name</label><input id="cn" value="${esc(profile.name)}">
+    <label>Facility</label><input id="cf" value="${esc(profile.facility)}" placeholder="e.g. Bupa Woodend, Gemlife">
+    <label>Passenger name</label><input id="ps">
+    <label>Ward / mobility notes (optional)</label><textarea id="nt" rows="2"></textarea>
+    <p><button id="ok">Confirm booking</button> <button class="sec" id="no">Cancel</button></p></div>`}
+  return `<h1>Book a ride</h1><p class="sub">Free volunteer trishaw rides around Woodend. Tap a rider’s name to book that hour.</p>
+  <div class="row"><button class="sec" id="pv">← Previous</button><b>${pd(week).toLocaleDateString("en-AU",{day:"numeric",month:"short"})} – ${pd(addD(week,6)).toLocaleDateString("en-AU",{day:"numeric",month:"short"})}</b><button class="sec" id="nx">Next →</button></div>
+  <p class="legend"><span>🟢 name = rider available</span><span>🟠 Booked</span><span>🟡 Bike charging</span></p>
+  <div class="cal">${g}</div>${panel}
+  <h2>My bookings</h2>${mine.length?mine.map(s=>`<div class="card"><b>${fmtD(s.date)}</b>, ${fmtT(s.hour)}<br><span class="mut">${esc(s.resident)} · with ${esc(rn(s))}${riders[s.riderId]&&riders[s.riderId].phone?" · 📞 "+esc(riders[s.riderId].phone):""}</span><br><button class="x" data-cancel="${s.id}">Cancel booking</button></div>`).join(""):`<p class="mut">No upcoming bookings.</p>`}`;
+}
+function bindBook(){
+  $("#pv").onclick=()=>{week=addD(week,-7);render()};$("#nx").onclick=()=>{week=addD(week,7);render()};
+  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{sel={d:b.dataset.d,h:+b.dataset.h};render();setTimeout(()=>$("#ps")&&$("#ps").scrollIntoView({block:"center"}),50)});
+  if($("#no"))$("#no").onclick=()=>{sel=null;render()};
+  if($("#ok"))$("#ok").onclick=confirmBook;
+  if($("#rid"))$("#rid").onchange=e=>{const sl=slots.find(x=>x.id===e.target.value);$("#rp").innerHTML=riderCard(sl&&sl.riderId)};
+  document.querySelectorAll("[data-cancel]").forEach(b=>b.onclick=()=>{const s=slots.find(x=>x.id===b.dataset.cancel);if(s&&confirm("Cancel this booking?"))unbook(s,false)});
+}
+async function confirmBook(){
+  const name=$("#cn").value.trim(),res=$("#ps").value.trim(),sid=$("#rid").value;
+  if(!name||!res)return alert("Please enter your name and the passenger’s name.");
+  if(!db)return;
+  profile={name,facility:$("#cf").value.trim()};saveP();
+  const ref=db.collection("slots").doc(sid),snap=await ref.get();
+  if(!snap.exists||snap.data().status!=="open"){sel=null;return alert("Sorry, that slot was just taken.")}
+  const s=snap.data(),keys=[];for(let i=0;i<=gap&&s.hour+i<=23;i++)keys.push(key(s.date,s.hour+i));
+  const got=[];let ok=true;
+  for(const k of keys){const l=db.collection("bikelock").doc(k);
+    try{const r=await l.acquire({holder:uid,ttlMs:31536000000});if(r.acquired)got.push(l);else{ok=false;break}}
+    catch(e){const x=await l.get();if(x.exists){ok=false;break}await l.set({holder:uid});got.push(l)}}
+  if(!ok){for(const l of got)await l.delete();sel=null;render();return alert("Sorry, the bike isn’t free then (booked or charging). Please pick another time.")}
+  await ref.update({status:"booked",carerId:uid,carerName:name,facility:profile.facility,resident:res,notes:$("#nt").value.trim(),seen:false,lockKeys:keys});
+  sel=null;
+}
+async function unbook(s,del){
+  for(const k of s.lockKeys||[key(s.date,s.hour)]){try{await db.collection("bikelock").doc(k).delete()}catch(e){}}
+  const ref=db.collection("slots").doc(s.id);
+  if(del)await ref.delete();else await ref.update({status:"open",carerId:null,carerName:null,facility:null,resident:null,notes:null,seen:true,lockKeys:null});
+}
+
+/* ---------- RIDER BACK END (#riders) ---------- */
+function riderPage(){
+  if(!profile.rname&&riders[uid])profile.rname=riders[uid].name;
+  if(!profile.rname)return `<h1>Rider area</h1><p class="sub">Set your availability.</p><div class="card"><label>Your name</label><input id="rn"><p><button id="go">Continue</button></p></div><p><a href="#">← Back to booking page</a></p>`;
+  const mine=byTime(slots.filter(s=>s.riderId===uid&&s.date>=today())),occ=occupancy();
+  const news=mine.filter(s=>s.status==="booked"&&!s.seen);
+  return `<div class="row"><h1>Rider area</h1><a href="#">Booking page</a></div><p class="sub">${esc(profile.rname)}</p>${profileCard()}
+  ${news.map(s=>`<div class="alert"><b>New ride booked!</b><br>${fmtD(s.date)}, ${fmtT(s.hour)}<br>Passenger: ${esc(s.resident)} (${esc(s.facility)})${s.notes?"<br>Notes: "+esc(s.notes):""}<br>Booked by ${esc(s.carerName)}.<p><button data-seen="${s.id}">Got it – I’ll get the bike ready</button></p></div>`).join("")}
+  ${availCard(occ)}
+  <h2>My slots</h2>${mine.length?mine.map(s=>{const o=occ[key(s.date,s.hour)];const tag=s.status==="booked"?`<span class="tag b">Booked</span>`:o?`<span class="tag b">Bike in use</span>`:`<span class="tag">Open</span>`;
+  return `<div class="card"><div class="row"><div><b>${fmtD(s.date)}</b><br>${fmtT(s.hour)}</div>${tag}</div>${s.status==="booked"?`<div class="mut">${esc(s.resident)} · ${esc(s.facility)} · by ${esc(s.carerName)}${s.notes?"<br>"+esc(s.notes):""}</div>`:""}<button class="x" data-del="${s.id}">${s.status==="booked"?"Cancel ride":"Remove"}</button></div>`}).join(""):`<p class="mut">No upcoming slots.</p>`}
+  <h2>Bike settings</h2><div class="card"><label>Charging gap after each ride (hours the bike is blocked)</label>
+  <select id="gap">${[0,1,2,3,4].map(n=>`<option ${n===gap?"selected":""} value="${n}">${n}</option>`).join("")}</select>
+  <p class="mut">Applies to new bookings. One bike, one ride at a time.</p></div>`;
+}
+function bindRider(){
+  if($("#go"))return $("#go").onclick=()=>{const n=$("#rn").value.trim();if(n){profile.rname=n;saveP();if(db&&!riders[uid]){riders[uid]={name:n,bio:"",phone:"",photo:""};db.collection("riders").doc(uid).set(riders[uid])}render()}};
+  document.querySelectorAll("[data-seen]").forEach(b=>b.onclick=()=>db.collection("slots").doc(b.dataset.seen).update({seen:true}));
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{const s=slots.find(x=>x.id===b.dataset.del);if(s&&confirm("Remove this slot?"))s.status==="booked"?unbook(s,true):db.collection("slots").doc(s.id).delete()});
+  $("#gap").onchange=e=>db&&db.doc("settings/bike").set({gap:+e.target.value});
+  $("#sp").onclick=async()=>{const name=$("#pn").value.trim();if(!name||!db)return alert("Please enter your name.");
+    riders[uid]={...(riders[uid]||{photo:""}),name,bio:$("#pb").value.trim(),phone:$("#pp").value.trim()};profile.rname=name;saveP();
+    await db.collection("riders").doc(uid).set(riders[uid]);alert("Profile saved")};
+  $("#ph").onchange=async e=>{const f=e.target.files[0];if(!f||!db)return;const photo=await shrink(f);
+    riders[uid]={name:profile.rname,bio:"",phone:"",...(riders[uid]||{}),photo};await db.collection("riders").doc(uid).set(riders[uid]);render()};
+  $("#d").onchange=e=>{rdate=e.target.value||today();rsel.clear();render()};
+  document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{const h=+b.dataset.pick;rsel.has(h)?rsel.delete(h):rsel.add(h);render()});
+  $("#add").onclick=async()=>{if(!db||!rsel.size)return alert("Tap at least one hour first.");const occ=occupancy();
+    for(const h of [...rsel]){if(hourState(rdate,h,occ).t!=="free")continue;
+      await db.collection("slots").add({riderId:uid,riderName:profile.rname,date:rdate,hour:h,status:"open"})}
+    rsel.clear();render()};
+}
+
+window.addEventListener("hashchange",()=>{sel=null;render()});
+render();
+/* ---------- Local demo data layer (replaces the claude.ai database) ---------- */
+const LS="wr_db_v1";
+let store={};try{store=JSON.parse(localStorage.getItem(LS)||"{}")}catch(e){}
+const persist=()=>{try{localStorage.setItem(LS,JSON.stringify(store))}catch(e){}};
+const subs=[];const notify=()=>subs.forEach(f=>f());
+const cp=v=>JSON.parse(JSON.stringify(v));
+const snapC=n=>({docs:Object.entries(store[n]||{}).map(([id,v])=>({id,data:()=>cp(v)}))});
+const snapD=(n,id)=>{const v=(store[n]||{})[id];return{exists:v!==undefined,data:()=>v&&cp(v)}};
+const col=n=>(store[n]=store[n]||{});
+function docRef(n,id){return{
+  get:async()=>snapD(n,id),
+  set:async d=>{col(n)[id]=cp(d);persist();notify()},
+  update:async d=>{col(n)[id]={...(col(n)[id]||{}),...cp(d)};persist();notify()},
+  delete:async()=>{delete col(n)[id];persist();notify()},
+  acquire:async o=>{if(col(n)[id])return{acquired:false};col(n)[id]={holder:o.holder};persist();notify();return{acquired:true}},
+  onSnapshot:cb=>{const f=()=>cb(snapD(n,id));subs.push(f);f()}}}
+const colRef=n=>({doc:id=>docRef(n,id),
+  add:async d=>{const id="d"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await docRef(n,id).set(d);return{id}},
+  onSnapshot:cb=>{const f=()=>cb(snapC(n));subs.push(f);f()}});
+db={collection:colRef,doc:p=>{const[n,id]=p.split("/");return docRef(n,id)}};
+window.addEventListener("storage",e=>{if(e.key===LS){try{store=JSON.parse(e.newValue||"{}")}catch(x){store={}}notify()}});
+function seed(){
+  store={seeded:true,riders:{
+    r_sam:{name:"Sam Taylor",bio:"Retired teacher. Loves a chat about local history. Riding since 2023.",phone:"0400 000 001",photo:""},
+    r_jan:{name:"Jan Morris",bio:"Local gardener and keen birdwatcher.",phone:"0400 000 002",photo:""},
+    r_bob:{name:"Bob Nguyen",bio:"Ex-bike mechanic, happy to just ride quietly.",phone:"0400 000 003",photo:""}},slots:{}};
+  const plan={r_sam:[9,10],r_jan:[11,12,13],r_bob:[14,15,10]};
+  for(let i=0;i<10;i++){const d=addD(today(),i);
+    for(const [r,hrs] of Object.entries(plan)){if((i+r.length)%3===0)continue;
+      for(const h of hrs)store.slots["s_"+r+d+h]={riderId:r,riderName:store.riders[r].name,date:d,hour:h,status:"open"}}}
+  persist();
+}
+if(!store.seeded)seed();
+function resetDemo(){if(confirm("Reset all demo data (bookings, slots, profiles)?")){seed();notify()}}
+let lu="";try{lu=localStorage.getItem("wr_uid")||""}catch(e){}
+if(!lu){lu="u"+Math.random().toString(36).slice(2,10);try{localStorage.setItem("wr_uid",lu)}catch(e){}}
+uid=lu;
+const re=()=>{const e=document.activeElement;if(!e||!/INPUT|TEXTAREA|SELECT/.test(e.tagName))render()};
+db.collection("slots").onSnapshot(s=>{slots=s.docs.map(d=>({id:d.id,...d.data()}));re()});
+db.collection("riders").onSnapshot(s=>{riders={};s.docs.forEach(d=>riders[d.id]=d.data());re()});
+db.doc("settings/bike").onSnapshot(s=>{if(s.exists&&s.data().gap!=null){gap=+s.data().gap;re()}});
+if("serviceWorker" in navigator&&/^https?:/.test(location.protocol))navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
